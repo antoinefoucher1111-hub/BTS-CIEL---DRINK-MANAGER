@@ -1,9 +1,16 @@
 #pragma once
+#include <cstdint>
 #include <functional>
 #include <string>
 
 class LecteurEmpreinte {
 public:
+    ~LecteurEmpreinte();
+
+    LecteurEmpreinte() = default;
+    LecteurEmpreinte(const LecteurEmpreinte&) = delete;
+    LecteurEmpreinte& operator=(const LecteurEmpreinte&) = delete;
+
     // Callbacks à renseigner par l'Authentificateur
     std::function<void(int)>                surUtilisateurIdentifie;  // idUser
     std::function<void()>                   surAuthEchouee;
@@ -27,5 +34,6 @@ private:
     void traiterLigne(const std::string& ligne);
     bool envoyer(const std::string& commande);
 
+    std::intptr_t m_port = -1;
     std::string m_tampon;
 };

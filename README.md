@@ -10,7 +10,9 @@ L'objectif est de gérer :
 - Les boissons disponibles
 - Les portefeuilles utilisateurs
 - L'historique des achats
-![Uploading Diagramme Entité-Relation (DER).png…]()
+
+<img width="539" height="387" alt="Diagramme Entité-Relation (DER)" src="https://github.com/user-attachments/assets/bd858f15-d5bf-4b00-9d5a-535dc7d88d14" />
+
 
 Le moteur de base de données utilisé est **SQLite**.
 

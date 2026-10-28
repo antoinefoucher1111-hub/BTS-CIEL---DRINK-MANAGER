@@ -11,7 +11,8 @@ L'objectif est de gérer :
 - Les portefeuilles utilisateurs
 - L'historique des achats
 
-<img width="539" height="387" alt="Diagramme Entité-Relation (DER)" src="https://github.com/user-attachments/assets/bd858f15-d5bf-4b00-9d5a-535dc7d88d14" />
+<img width="2734" height="2268" alt="Diagramme Entité-Relation (DER)" src="https://github.com/user-attachments/assets/7da2e72d-a8c2-41f8-b363-d2acb3d83f88" />
+
 
 
 Le moteur de base de données utilisé est **SQLite**.

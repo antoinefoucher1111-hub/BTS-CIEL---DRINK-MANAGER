@@ -10,6 +10,7 @@ L'objectif est de gérer :
 - Les boissons disponibles
 - Les portefeuilles utilisateurs
 - L'historique des achats
+![Uploading Diagramme Entité-Relation (DER).png…]()
 
 Le moteur de base de données utilisé est **SQLite**.
 

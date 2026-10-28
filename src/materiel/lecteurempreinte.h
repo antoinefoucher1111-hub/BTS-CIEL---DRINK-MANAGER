@@ -1,36 +1,31 @@
 #pragma once
-#include <QObject>
-#include <QSerialPort>
-#include <QByteArray>
+#include <functional>
+#include <string>
 
-class LecteurEmpreinte : public QObject {
-    Q_OBJECT
+class LecteurEmpreinte {
 public:
-    explicit LecteurEmpreinte(QObject* parent = nullptr);
+    // Callbacks à renseigner par l'Authentificateur
+    std::function<void(int)>                surUtilisateurIdentifie;  // idUser
+    std::function<void()>                   surAuthEchouee;
+    std::function<void(bool, int)>          surEnrolement;            // (réussi, idUser)
+    std::function<void(const std::string&)> surErreur;
 
-    bool ouvrir(const QString& nomPort, qint32 baud = 9600);
-    void fermer();
+    bool ouvrir(const std::string& nomPort, int baud = 9600);  // TODO: API système
+    void fermer();                                             // TODO
 
-    // PC -> Arduino
-    void envoyerLedOk();
-    void envoyerBuzzer();
-    void demanderEnrolement(int idUser);
+    // PC -> Arduino (false si argument invalide ou port fermé)
+    bool afficherCode(const std::string& code);
+    bool effacerAffichage();
+    bool demanderEnrolement(int idUser);
 
-    // Pour tester sans matériel (appelé par le bouton du simulateur)
-    void simulerLigne(const QString& ligne);
-
-signals:
-    void utilisateurIdentifie(int idUser);
-    void authEchouee();
-    void erreurPort(const QString& message);
-
-private slots:
-    void surDonneesRecues();
+    // Arduino -> PC
+    void lire();                                 // TODO: lire le port, puis recevoir()
+    void recevoir(const std::string& octets);    // accumule, traite chaque ligne complète
+    void simulerLigne(const std::string& ligne); // test sans Arduino
 
 private:
-    void traiterLigne(const QString& ligne);
-    void envoyer(const QByteArray& commande);
+    void traiterLigne(const std::string& ligne);
+    bool envoyer(const std::string& commande);
 
-    QSerialPort m_port;
-    QByteArray  m_tampon;   // accumule les octets jusqu'au '\n'
+    std::string m_tampon;
 };

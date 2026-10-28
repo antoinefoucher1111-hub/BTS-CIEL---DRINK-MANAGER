@@ -6,7 +6,8 @@ BTS CIEL - DRINK MANAGER
 
 ## Diagramme Relation d'identité POO Drink Manager :
 
-<img width="566" height="679" alt="Diagramme Relation d&#39;identité POO Drink Manager drawio" src="https://github.com/user-attachments/assets/f8fb2983-8069-4485-943f-4a25e1363df2" />
+<img width="2734" height="2268" alt="Diagramme Entité-Relation (DER)" src="https://github.com/user-attachments/assets/162e3788-3345-42d6-8e8b-87406dadd681" />
+
 
 
 ## Arborescence du projet

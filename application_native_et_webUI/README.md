@@ -2,9 +2,7 @@
 
 ## SOMMAIRE :
 
--
-
----
+- ***
 
 ## 1. L'application native
 
@@ -33,3 +31,16 @@ Interface Graphique (GUI) locale : Qt ou Raylib / LVGL (idéal pour les écrans 
 En C++, le micro-framework [Crow](https://github.com/crowcpp/crow) permet d'exploiter du HTML.
 
 ---
+
+## 3. Arborescence :
+
+BTS-CIEL---DRINK-MANAGER/
+├── CMakeLists.txt
+├── include/
+├── src/
+│ ├── models/ # Entités C++ (User, Drink, Transaction)
+│ ├── repositories/ # ORM / Requêtes SQLite
+│ ├── web/ # Routes et serveur Crow
+│ ├── hardware/ # Communication série Arduino
+│ └── main.cpp
+└── data/ # cafe.db et exports XML

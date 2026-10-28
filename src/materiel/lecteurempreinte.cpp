@@ -186,14 +186,23 @@ bool LecteurEmpreinte::ouvrir(const std::string& nomPort, int baud)
 
 void LecteurEmpreinte::fermer()
 {
-    if (m_port == -1) return;
+    if (m_port != -1) {
 #ifdef _WIN32
-    CloseHandle(reinterpret_cast<HANDLE>(m_port));
+        if (!CloseHandle(reinterpret_cast<HANDLE>(m_port))) {
+            signalerErreur(surErreur, "Impossible de fermer le port série (erreur "
+                           + std::to_string(GetLastError()) + ")");
+        }
 #else
-    close(static_cast<int>(m_port));
+        if (close(static_cast<int>(m_port)) == -1) {
+            const int erreur = errno;
+            signalerErreur(surErreur, "Impossible de fermer le port série : "
+                           + std::string(strerror(erreur)));
+        }
 #endif
+    }
     m_port = -1;
     m_tampon.clear();
+    m_rejeterLigneTropLongue = false;
 }
 
 void LecteurEmpreinte::lire()
@@ -305,14 +314,26 @@ bool LecteurEmpreinte::demanderEnrolement(int idUser)
 
 void LecteurEmpreinte::recevoir(const std::string& octets)
 {
-    m_tampon += octets;
-    std::size_t fin;
-    while ((fin = m_tampon.find('\n')) != std::string::npos) {
-        traiterLigne(m_tampon.substr(0, fin));
-        m_tampon.erase(0, fin + 1);
+    for (char octet : octets) {
+        if (octet == '\n') {
+            if (m_rejeterLigneTropLongue) {
+                signalerErreur(surErreur, "Ligne reçue trop longue");
+                m_rejeterLigneTropLongue = false;
+            } else {
+                traiterLigne(m_tampon);
+            }
+            m_tampon.clear();
+            continue;
+        }
+
+        if (m_rejeterLigneTropLongue) continue;
+        if (m_tampon.size() >= Protocole::LONGUEUR_MAX + 2) {
+            m_tampon.clear();
+            m_rejeterLigneTropLongue = true;
+            continue;
+        }
+        m_tampon += octet;
     }
-    if (m_tampon.size() > 256)      // pas de '\n' : on jette pour ne pas grossir sans fin
-        m_tampon.clear();
 }
 
 void LecteurEmpreinte::simulerLigne(const std::string& ligne)

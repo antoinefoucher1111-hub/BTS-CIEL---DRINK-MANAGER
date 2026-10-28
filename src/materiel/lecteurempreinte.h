@@ -17,8 +17,8 @@ public:
     std::function<void(bool, int)>          surEnrolement;            // (réussi, idUser)
     std::function<void(const std::string&)> surErreur;
 
-    bool ouvrir(const std::string& nomPort, int baud = 9600);  // TODO: API système
-    void fermer();                                             // TODO
+    bool ouvrir(const std::string& nomPort, int baud = 9600);
+    void fermer();
 
     // PC -> Arduino (false si argument invalide ou port fermé)
     bool afficherCode(const std::string& code);
@@ -26,7 +26,7 @@ public:
     bool demanderEnrolement(int idUser);
 
     // Arduino -> PC
-    void lire();                                 // TODO: lire le port, puis recevoir()
+    void lire();                                 // lit les octets disponibles, puis appelle recevoir()
     void recevoir(const std::string& octets);    // accumule, traite chaque ligne complète
     void simulerLigne(const std::string& ligne); // test sans Arduino
 
@@ -36,4 +36,5 @@ private:
 
     std::intptr_t m_port = -1;
     std::string m_tampon;
+    bool m_rejeterLigneTropLongue = false;
 };

@@ -11,10 +11,15 @@ std::string nettoyer(const std::string& s) {       // enlève \r, \n, espaces au
 
 bool lireId(const std::string& texte, int& id) {   // chiffres uniquement, 1..ID_MAX
     if (texte.empty() || texte.size() > 3) return false;
-    for (char c : texte)
+    int valeur = 0;
+    for (char c : texte) {
         if (c < '0' || c > '9') return false;
-    id = std::stoi(texte);
-    return id >= 1 && id <= Protocole::ID_MAX;
+        valeur = valeur * 10 + (c - '0');
+        if (valeur > Protocole::ID_MAX) return false;
+    }
+    if (valeur == 0) return false;
+    id = valeur;
+    return true;
 }
 }
 

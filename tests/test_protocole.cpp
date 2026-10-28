@@ -20,6 +20,7 @@ int main() {
 
     // Arduino -> PC
     valide("USER:42", T::UserOk, 42);
+    valide("USER:127", T::UserOk, Protocole::ID_MAX);
     valide("USER:42\r\n", T::UserOk, 42);
     valide("AUTH_FAIL", T::AuthFail, 0);
     valide("ENROLL_OK:7", T::EnrollOk, 7);
@@ -36,6 +37,7 @@ int main() {
         VERIFIER(Protocole::commandeCode(c).empty());
     VERIFIER(Protocole::commandeClear() == "CLEAR\n");
     VERIFIER(Protocole::commandeEnroll(42) == "ENROLL:42\n");
+    VERIFIER(Protocole::commandeEnroll(Protocole::ID_MAX) == "ENROLL:127\n");
     VERIFIER(Protocole::commandeEnroll(0).empty());
     VERIFIER(Protocole::commandeEnroll(128).empty());
 

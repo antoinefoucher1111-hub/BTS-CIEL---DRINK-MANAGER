@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/drink_manager.dir/link.d CMakeFiles/drink_manager.dir/src/main.cpp.o CMakeFiles/drink_manager.dir/src/repositories/UserRepository.cpp.o -o drink_manager  /usr/lib/libsqlite3.so

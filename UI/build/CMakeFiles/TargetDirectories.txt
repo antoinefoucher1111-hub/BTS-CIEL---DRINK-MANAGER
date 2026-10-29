@@ -1,3 +1,0 @@
-/home/Erwann/Documents/cours_ciel/cours_baptiste/projet_natif_cafe/BTS-CIEL---DRINK-MANAGER/build/CMakeFiles/drink_manager.dir
-/home/Erwann/Documents/cours_ciel/cours_baptiste/projet_natif_cafe/BTS-CIEL---DRINK-MANAGER/build/CMakeFiles/edit_cache.dir
-/home/Erwann/Documents/cours_ciel/cours_baptiste/projet_natif_cafe/BTS-CIEL---DRINK-MANAGER/build/CMakeFiles/rebuild_cache.dir

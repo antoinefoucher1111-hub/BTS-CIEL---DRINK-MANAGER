@@ -3,8 +3,10 @@
 
 int main()
 {
-    std::cout << Securite::hasher("abc") << std::endl;
-    std::cout << Securite::hasher("abd") << std::endl;
-    std::cout << Securite::hasher("abc") << std::endl;
+    for (int i = 0; i < 10; ++i)
+    {
+        std::string code = Securite::genererCode();
+        std::cout << code << "  (longueur " << code.size() << ")" << std::endl;
+    }
     return 0;
 }

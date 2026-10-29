@@ -1,27 +1,26 @@
 #pragma once
-#include <map>
-#include <set>
 #include <string>
 #include <ctime>
+#include "ibase.h"
 #include "jeton.h"
-#include "securite.h"
-#include "../materiel/afficheur.h"
+
+class IAfficheur
+{
+public:
+    virtual ~IAfficheur() = default;
+    virtual void afficher(const std::string& texte) = 0;
+};
 
 class Authentificateur
 {
-    // Attributs
-    private:
-        IAfficheur&          m_afficheur;
-        GestionJeton         m_gestion_jeton;
-        Securite             m_securite;
-        std::set<int>        m_empreintes_connus;
-        std::map<std::string, Jeton> m_jetons;
+public:
+    Authentificateur(IBase& base, IAfficheur& afficheur);
 
-    // Methodes
-    public:
-        Authentificateur(IAfficheur& afficheur, const std::set<int>& empreintesConnues, const Securite securite, const GestionJeton gestionJeton) :
-            m_afficheur(afficheur), m_empreintes_connus(empreintesConnues), m_securite(securite), m_gestion_jeton(gestionJeton) {}
+    bool surUtilisateurIdentifie(int fingerprintId, std::time_t maintenant);
 
-        bool surUtilisateurIdentifie(int fingerprintId, std::time_t maintenant);
-        ResultatVerif verifier(const std::string& codeSaisi, std::time_t maintenant);
+    ResultatVerif verifier(int idUser, const std::string& codeSaisi, std::time_t maintenant);
+
+private:
+    IBase&      m_base;
+    IAfficheur& m_afficheur;
 };

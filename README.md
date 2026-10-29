@@ -10,7 +10,8 @@ BTS CIEL - DRINK MANAGER
 
 ## Diagramme d'architecture
 
-C
+<img width="2293" height="907" alt="DiagramProjectLink" src="https://github.com/user-attachments/assets/026578a6-e3c8-4c66-a143-7070e90bf871" />
+
 
 ## Arborescence du projet
 ```

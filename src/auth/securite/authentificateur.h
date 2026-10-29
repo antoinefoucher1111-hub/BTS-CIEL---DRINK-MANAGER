@@ -4,24 +4,24 @@
 #include <string>
 #include <ctime>
 #include "jeton.h"
-
-class IAfficheur
-{
-public:
-    virtual ~IAfficheur() = default;
-    virtual void afficher(const std::string& texte) = 0;
-};
+#include "securite.h"
+#include "../materiel/afficheur.h"
 
 class Authentificateur
 {
-public:
-    Authentificateur(IAfficheur& afficheur, const std::set<int>& empreintesConnues);
+    // Attributs
+    private:
+        IAfficheur&          m_afficheur;
+        GestionJeton         m_gestion_jeton;
+        Securite             m_securite;
+        std::set<int>        m_empreintes_connus;
+        std::map<int, Jeton> m_jetons;
 
-    bool surUtilisateurIdentifie(int fingerprintId, std::time_t maintenant);
-    ResultatVerif verifier(int fingerprintId, const std::string& codeSaisi, std::time_t maintenant);
+    // Methodes
+    public:
+        Authentificateur(IAfficheur& afficheur, const std::set<int>& empreintesConnues, const Securite securite, const GestionJeton gestionJeton) :
+            m_afficheur(afficheur), m_empreintes_connus(empreintesConnues), m_securite(securite), m_gestion_jeton(gestionJeton) {}
 
-private:
-    IAfficheur&          m_afficheur;
-    std::set<int>        m_connus;
-    std::map<int, Jeton> m_jetons;
+        bool surUtilisateurIdentifie(int fingerprintId, std::time_t maintenant);
+        ResultatVerif verifier(int fingerprintId, const std::string& codeSaisi, std::time_t maintenant);
 };

@@ -18,13 +18,10 @@ TO DO :
 
 ```mermaid
 flowchart LR
-C{Capteurs<br> d'empreintes}-->F1[Fonction :<br> Transmet un id à l'Arduino]
-F1-->A(Arduino)
-A-->F2[Fonctions : <br> 1. Transmet l'id au Raspberry <br> 2. Affiche le code Auth]
-A-->Ecran{ecran du code}
-F2-->Rasp(Raspberry Pi)
-
-Rasp-->F3[Fonctions : <br> 1. Récupère l'id et génère le jeton associé <br> 2. Trasmet un code à usage unique à l'Arduino <br> 3. Authentifie l'utilisateur via l'appli web]
+C[CapteursFonction :<br> Transmet un id à l'Arduino]-->A(Arduino <br>Fonctions : <br> 1. Transmet l'id au Raspberry <br> 2. Affiche le code Auth)
+A-->Rasp[Fonctions : <br> 1. Récupère l'id et génère le jeton associé <br> 2. Authentifie l'utilisateur via l'appli web <br>3. Renvoie le code généré aléatoirement à l'Arduino]
+Rasp-->A
+A-->E[Ecran]
 ```
 
 L'id doit référer à un utilisateur en base, lié par un jeton temporaire : jeton = fingerId + timestamp + code unique.

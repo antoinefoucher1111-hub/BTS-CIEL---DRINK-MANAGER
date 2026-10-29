@@ -15,7 +15,7 @@ class Authentificateur
         GestionJeton         m_gestion_jeton;
         Securite             m_securite;
         std::set<int>        m_empreintes_connus;
-        std::map<int, Jeton> m_jetons;
+        std::map<std::string, Jeton> m_jetons;
 
     // Methodes
     public:
@@ -23,5 +23,5 @@ class Authentificateur
             m_afficheur(afficheur), m_empreintes_connus(empreintesConnues), m_securite(securite), m_gestion_jeton(gestionJeton) {}
 
         bool surUtilisateurIdentifie(int fingerprintId, std::time_t maintenant);
-        ResultatVerif verifier(int fingerprintId, const std::string& codeSaisi, std::time_t maintenant);
+        ResultatVerif verifier(const std::string& codeSaisi, std::time_t maintenant);
 };

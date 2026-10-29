@@ -1,0 +1,10 @@
+^C:\USERS\ANTOI\DOCUMENTS\UI_INTERFACE_WEB\BACKEND\BUILD\CMAKEFILES\7DD643A60FDFF41D7B9BD58F0E4B2AD4\GENERATE.STAMP.RULE
+setlocal
+C:\Users\antoi\AppData\Local\Microsoft\WinGet\Packages\Kitware.CMake_Microsoft.Winget.Source_8wekyb3d8bbwe\cmake-4.4.4-windows-x86_64\bin\cmake.exe -SC:/Users/antoi/Documents/Ui_Interface_web/backend -BC:/Users/antoi/Documents/Ui_Interface_web/backend/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/antoi/Documents/Ui_Interface_web/backend/build/DrinkManager.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,3 @@
+C:/Users/antoi/Documents/Ui_Interface_web/backend/build/CMakeFiles/drink_manager.dir
+C:/Users/antoi/Documents/Ui_Interface_web/backend/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/antoi/Documents/Ui_Interface_web/backend/build/CMakeFiles/ZERO_CHECK.dir

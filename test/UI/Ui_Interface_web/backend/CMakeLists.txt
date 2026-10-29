@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.15)
+project(DrinkManager VERSION 1.0 LANGUAGES CXX C)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+
+include_directories(include src)
+file(GLOB_RECURSE SRC_FILES "src/*.cpp")
+
+if(WIN32)
+    message(STATUS "Système Windows : Utilisation SQLite locale.")
+    add_compile_definitions(_WIN32_WINNT=0x0a00)
+    include_directories(sqlite)
+    add_executable(drink_manager ${SRC_FILES} sqlite/sqlite3.c)
+    target_link_libraries(drink_manager ws2_32 crypt32)
+else()
+    message(STATUS "Système Linux : Utilisation SQLite natif.")
+    add_executable(drink_manager ${SRC_FILES})
+    find_package(SQLite3 REQUIRED)
+    find_package(Threads REQUIRED)
+    target_link_libraries(drink_manager SQLite::SQLite3 Threads::Threads)
+endif()

@@ -1,0 +1,149 @@
+// src/main.cpp
+#define ASIO_ENABLE_OLD_SERVICES 1
+#define CROW_USE_BOOST 0
+
+#include "crow_all.h"
+#include "repositories/UserRepository.hpp"
+#include <sqlite3.h>
+#include <mutex>
+
+// Middleware pour gérer les headers CORS (indispensable pour Expo Web)
+struct CorsMiddleware {
+    struct context {};
+    void before_handle(crow::request& /*req*/, crow::response& /*res*/, context& /*ctx*/) {}
+    void after_handle(crow::request& /*req*/, crow::response& res, context& /*ctx*/) {
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.add_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+        res.add_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    }
+};
+
+int main() {
+    sqlite3* db;
+    if (sqlite3_open("cafe.db", &db) != SQLITE_OK) {
+        std::cerr << "Erreur d'ouverture SQLite\n";
+        return 1;
+    }
+
+    UserRepository repo(db);
+    repo.initTables();
+
+    // Mutex pour sécuriser les écritures SQLite en multi-threads
+    std::mutex dbMutex;
+
+    crow::App<CorsMiddleware> app;
+
+    // Route OPTIONS globale pour les requêtes Preflight CORS du navigateur
+    CROW_ROUTE(app, "/api/<path>")
+    .methods("OPTIONS"_method)([](std::string) {
+        return crow::response(204);
+    });
+
+    // 1. GET /api/users/<id> : Consultation du profil
+    CROW_ROUTE(app, "/api/users/<int>")
+    .methods("GET"_method)([&repo, &dbMutex](int userId) {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        auto user = repo.getUserById(userId);
+        if (!user) {
+            return crow::response(404, "{\"error\": \"Utilisateur non trouvé\"}");
+        }
+
+        crow::json::wvalue res;
+        res["id"] = user->id;
+        res["name"] = user->name;
+        res["email"] = user->email;
+        res["balance"] = user->balance;
+        return crow::response(200, res);
+    });
+
+    // 2. PUT /api/users/<id> : Modification du profil (nom)
+    CROW_ROUTE(app, "/api/users/<int>")
+    .methods("PUT"_method)([&repo, &dbMutex](const crow::request& req, int userId) {
+        auto body = crow::json::load(req.body);
+        if (!body || !body.has("name")) {
+            return crow::response(400, "{\"error\": \"Champ 'name' obligatoire\"}");
+        }
+
+        std::string newName = body["name"].s();
+
+        std::lock_guard<std::mutex> lock(dbMutex);
+        if (!repo.updateUserProfile(userId, newName)) {
+            return crow::response(500, "{\"error\": \"Erreur lors de la mise à jour\"}");
+        }
+
+        crow::json::wvalue res;
+        res["status"] = "success";
+        return crow::response(200, res);
+    });
+
+    // 3. GET /api/drinks : Liste du catalogue de cafés
+    CROW_ROUTE(app, "/api/drinks")
+    .methods("GET"_method)([&repo, &dbMutex]() {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        auto drinks = repo.getDrinks();
+
+        crow::json::wvalue res;
+        for (size_t i = 0; i < drinks.size(); ++i) {
+            res[i]["id"] = drinks[i].id;
+            res[i]["name"] = drinks[i].name;
+            res[i]["price"] = drinks[i].price;
+        }
+        return crow::response(200, res);
+    });
+
+    // 4. POST /api/orders : Débiter un café
+    CROW_ROUTE(app, "/api/orders")
+    .methods("POST"_method)([&repo, &dbMutex](const crow::request& req) {
+        auto body = crow::json::load(req.body);
+        if (!body || !body.has("user_id") || !body.has("drink_id")) {
+            return crow::response(400, "{\"error\": \"Parametres manquants\"}");
+        }
+
+        int userId = body["user_id"].i();
+        int drinkId = body["drink_id"].i();
+
+        std::lock_guard<std::mutex> lock(dbMutex);
+        auto user = repo.getUserById(userId);
+        auto drink = repo.getDrinkById(drinkId);
+
+        if (!user || !drink) return crow::response(404, "{\"error\": \"Boisson ou Utilisateur introuvable\"}");
+        if (user->balance < drink->price) {
+            return crow::response(400, "{\"error\": \"Solde insuffisant\"}");
+        }
+
+        repo.updateBalance(userId, -drink->price);
+        auto updatedUser = repo.getUserById(userId);
+
+        crow::json::wvalue res;
+        res["status"] = "success";
+        res["new_balance"] = updatedUser->balance;
+        return crow::response(200, res);
+    });
+
+    // 5. POST /api/recharge : Créditer le solde
+    CROW_ROUTE(app, "/api/recharge")
+    .methods("POST"_method)([&repo, &dbMutex](const crow::request& req) {
+        auto body = crow::json::load(req.body);
+        if (!body || !body.has("user_id") || !body.has("amount")) {
+            return crow::response(400, "{\"error\": \"Parametres manquants\"}");
+        }
+
+        int userId = body["user_id"].i();
+        double amount = body["amount"].d();
+
+        std::lock_guard<std::mutex> lock(dbMutex);
+        repo.updateBalance(userId, amount);
+        auto updatedUser = repo.getUserById(userId);
+
+        crow::json::wvalue res;
+        res["status"] = "success";
+        res["new_balance"] = updatedUser->balance;
+        return crow::response(200, res);
+    });
+
+    std::cout << "[INFO] Serveur C++ en écoute sur http://0.0.0.0:8080\n";
+    app.port(8080).multithreaded().run();
+
+    sqlite3_close(db);
+    return 0;
+}

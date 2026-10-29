@@ -8,6 +8,9 @@ BTS CIEL - DRINK MANAGER
 
 <img width="2734" height="2268" alt="Diagramme Entité-Relation (DER)" src="https://github.com/user-attachments/assets/874e1c1a-1fbe-4e89-9c22-78a027e3a250" />
 
+## Diagramme d'architecture
+
+C
 
 ## Arborescence du projet
 ```

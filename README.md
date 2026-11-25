@@ -3,7 +3,6 @@
 Système complet de gestion et de distribution de boissons associant **électronique embarquée (Arduino UNO + capteur d'empreintes AS608 + écran LCD I2C)**, **supervision Raspberry Pi (pont série Python + serveur API REST C++17 + base SQLite)** et **interface web mobile-first (React Native Web / Expo)** accessible par QR Code sur le réseau local.
 
 > 📄 **Documents complémentaires :**
-> - [Compte Rendu Complet du Projet & Ressenti](COMPTE_RENDU_PROJET.md)
 > - [Tutoriel Déploiement Raspberry Pi 5](TUTO_RASPBERRY_PI.md)
 > - [Documentation Module Biométrique AS608](arduino/documentation_technique_module_biom_trique.md)
 

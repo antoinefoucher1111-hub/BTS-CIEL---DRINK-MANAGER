@@ -34,10 +34,30 @@ export const apiClient = axios.create({
 // ---- Session (jeton délivré par le serveur C++ après le code biométrique) ----
 const TOKEN_KEY = "dm_token";
 const USER_KEY = "dm_user_id";
+const ADMIN_TOKEN_KEY = "dm_admin_token";
 let authToken: string | null = null;
+let adminToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
 
 const storage = () => (typeof window !== "undefined" ? window.sessionStorage : undefined);
+
+export const adminSession = {
+    load: (): string | null => {
+        const t = storage()?.getItem(ADMIN_TOKEN_KEY) || null;
+        adminToken = t;
+        return t;
+    },
+    save: (token: string) => {
+        adminToken = token;
+        storage()?.setItem(ADMIN_TOKEN_KEY, token);
+    },
+    clear: () => {
+        adminToken = null;
+        storage()?.removeItem(ADMIN_TOKEN_KEY);
+    },
+};
+
+const adminConfig = () => (adminToken ? { headers: { Authorization: `Bearer ${adminToken}` } } : {});
 
 export const session = {
     load: (): { token: string; userId: number } | null => {
@@ -65,7 +85,9 @@ export const session = {
 };
 
 apiClient.interceptors.request.use((config) => {
-    if (authToken) config.headers.set("Authorization", `Bearer ${authToken}`);
+    if (authToken && !config.headers.get("Authorization")) {
+        config.headers.set("Authorization", `Bearer ${authToken}`);
+    }
     return config;
 });
 
@@ -85,23 +107,34 @@ export const api = {
         const { data } = await apiClient.get<HealthResponse>("/health");
         return data;
     },
+    adminLogin: async (username: string, password: string): Promise<{ status: string; role: string; token: string }> => {
+        const { data } = await apiClient.post<{ status: string; role: string; token: string }>("/admin/login", {
+            username,
+            password,
+        });
+        return data;
+    },
     getUsers: async (): Promise<UserProfile[]> => {
-        const { data } = await apiClient.get<UserProfile[]>("/users");
+        const { data } = await apiClient.get<UserProfile[]>("/users", adminConfig());
         return data;
     },
     getUser: async (userId: number | string): Promise<UserProfile> => {
         const { data } = await apiClient.get<UserProfile>(`/users/${userId}`);
         return data;
     },
-    createUser: async (name: string, balance = 0): Promise<UserProfile> => {
-        const { data } = await apiClient.post<UserProfile>("/users", { name, balance });
+    createUser: async (name: string, balance = 0, accessPrint = 0): Promise<UserProfile> => {
+        const { data } = await apiClient.post<UserProfile>(
+            "/users",
+            { name, balance, access_print: accessPrint },
+            adminConfig()
+        );
         return data;
     },
     updateUserName: async (userId: number | string, name: string): Promise<void> => {
         await apiClient.put(`/users/${userId}`, { name });
     },
     updateFingerprint: async (userId: number | string, accessPrint: number): Promise<void> => {
-        await apiClient.put(`/users/${userId}/fingerprint`, { access_print: accessPrint });
+        await apiClient.put(`/users/${userId}/fingerprint`, { access_print: accessPrint }, adminConfig());
     },
     biometricScan: async (fingerprintId: number): Promise<BiometricAuthResponse> => {
         const { data } = await apiClient.post<BiometricAuthResponse>("/auth/biometric", {

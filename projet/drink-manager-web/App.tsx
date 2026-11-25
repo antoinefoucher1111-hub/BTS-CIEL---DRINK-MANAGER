@@ -9,7 +9,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { api, API_BASE_URL, session } from "./src/services/api";
+import { adminSession, api, API_BASE_URL, session } from "./src/services/api";
 import { Drink, HistoryItem, UserProfile } from "./src/types";
 
 const COLORS = {
@@ -80,6 +80,18 @@ export default function App() {
     const [authCodeInput, setAuthCodeInput] = useState("");
     const [simFingerprintId, setSimFingerprintId] = useState("1");
     const [generatedSerialInfo, setGeneratedSerialInfo] = useState<string | null>(null);
+
+    // Mode Admin (création utilisateur & liaison empreinte)
+    const [adminView, setAdminView] = useState<"none" | "login" | "panel">("none");
+    const [adminUsername, setAdminUsername] = useState("");
+    const [adminPassword, setAdminPassword] = useState("");
+    const [adminUsers, setAdminUsers] = useState<UserProfile[]>([]);
+    const [adminLoading, setAdminLoading] = useState(false);
+    const [newUserName, setNewUserName] = useState("");
+    const [newUserBalance, setNewUserBalance] = useState("0");
+    const [newUserFingerprint, setNewUserFingerprint] = useState("");
+    const [editingFpUserId, setEditingFpUserId] = useState<number | null>(null);
+    const [editingFpValue, setEditingFpValue] = useState("");
 
     const showToast = useCallback((type: "success" | "error", text: string) => {
         setToast({ type, text });
@@ -265,6 +277,325 @@ export default function App() {
         }
     };
 
+    const computeNextFreeFingerprint = (list: UserProfile[]): string => {
+        const used = new Set(list.map((u) => u.access_print || 0).filter((n) => n > 0));
+        for (let i = 1; i <= 127; i++) {
+            if (!used.has(i)) return String(i);
+        }
+        return "";
+    };
+
+    const loadAdminUsers = useCallback(async () => {
+        try {
+            setAdminLoading(true);
+            const list = await api.getUsers();
+            setAdminUsers(list);
+            setNewUserFingerprint((prev) => prev || computeNextFreeFingerprint(list));
+        } catch (err: any) {
+            if (err?.response?.status === 401 || err?.response?.status === 403) {
+                adminSession.clear();
+                setAdminView("login");
+                showToast("error", "Session admin expirée. Reconnectez-vous.");
+            } else {
+                showToast("error", "Impossible de charger les utilisateurs.");
+            }
+        } finally {
+            setAdminLoading(false);
+        }
+    }, [showToast]);
+
+    const handleOpenAdmin = () => {
+        if (adminSession.load()) {
+            setAdminView("panel");
+            loadAdminUsers();
+        } else {
+            setAdminView("login");
+        }
+    };
+
+    const handleAdminLogin = async () => {
+        try {
+            setAdminLoading(true);
+            const res = await api.adminLogin(adminUsername.trim(), adminPassword);
+            adminSession.save(res.token);
+            setAdminPassword("");
+            setAdminView("panel");
+            showToast("success", "Mode administrateur activé.");
+            await loadAdminUsers();
+        } catch (err: any) {
+            showToast("error", err?.response?.data?.error || "Identifiants administrateur incorrects.");
+        } finally {
+            setAdminLoading(false);
+        }
+    };
+
+    const handleAdminLogout = () => {
+        adminSession.clear();
+        setAdminView("none");
+        setAdminUsername("");
+        setAdminPassword("");
+        setEditingFpUserId(null);
+    };
+
+    const handleAdminCreateUser = async () => {
+        const name = newUserName.trim();
+        const balance = Number(newUserBalance.replace(",", ".")) || 0;
+        const fp = newUserFingerprint.trim() === "" ? 0 : Number(newUserFingerprint.trim());
+        if (!name) {
+            showToast("error", "Veuillez saisir un nom d'utilisateur.");
+            return;
+        }
+        if (Number.isNaN(balance) || balance < 0) {
+            showToast("error", "Solde initial invalide.");
+            return;
+        }
+        if (Number.isNaN(fp) || fp < 0 || fp > 127) {
+            showToast("error", "ID d'empreinte invalide (0 à 127).");
+            return;
+        }
+        try {
+            setAdminLoading(true);
+            const created = await api.createUser(name, balance, fp);
+            const updatedList = [...adminUsers, created];
+            setAdminUsers(updatedList);
+            setNewUserName("");
+            setNewUserBalance("0");
+            setNewUserFingerprint(computeNextFreeFingerprint(updatedList));
+            showToast(
+                "success",
+                `Compte #${created.id} (${created.name}) créé` + (fp > 0 ? ` avec empreinte #${fp} !` : " !")
+            );
+        } catch (err: any) {
+            showToast("error", err?.response?.data?.error || "Impossible de créer l'utilisateur.");
+        } finally {
+            setAdminLoading(false);
+        }
+    };
+
+    const handleAdminSaveFingerprint = async (targetUserId: number) => {
+        const fp = editingFpValue.trim() === "" ? 0 : Number(editingFpValue.trim());
+        if (Number.isNaN(fp) || fp < 0 || fp > 127) {
+            showToast("error", "ID d'empreinte invalide (0 à 127).");
+            return;
+        }
+        try {
+            setAdminLoading(true);
+            await api.updateFingerprint(targetUserId, fp);
+            setAdminUsers((prev) =>
+                prev.map((u) => (u.id === targetUserId ? { ...u, access_print: fp } : u))
+            );
+            setEditingFpUserId(null);
+            showToast("success", fp > 0 ? `Empreinte #${fp} liée au compte #${targetUserId}` : `Empreinte dissociée`);
+        } catch (err: any) {
+            showToast("error", err?.response?.data?.error || "Échec de la liaison d'empreinte.");
+        } finally {
+            setAdminLoading(false);
+        }
+    };
+
+    // ---------- Mode Admin (connexion ou panneau gestion utilisateurs) ----------
+    if (adminView === "login") {
+        return (
+            <ScrollView style={styles.container} contentContainerStyle={[styles.scrollContent, { justifyContent: "center", flexGrow: 1 }]}>
+                {toast && (
+                    <View style={[styles.toast, toast.type === "success" ? styles.toastSuccess : styles.toastError]}>
+                        <Text style={[styles.toastText, { color: toast.type === "success" ? COLORS.success : COLORS.danger }]}>
+                            {toast.text}
+                        </Text>
+                    </View>
+                )}
+                <View style={[styles.card, { alignItems: "center" }]}>
+                    <Text style={{ fontSize: 44 }}>⚙️</Text>
+                    <Text style={[styles.headerName, { marginTop: 8, textAlign: "center" }]}>Mode Administrateur</Text>
+                    <Text style={[styles.greeting, { textAlign: "center", marginTop: 6, marginBottom: 16 }]}>
+                        Création de comptes et liaison des empreintes
+                    </Text>
+                    <TextInput
+                        style={[styles.input, { width: "100%" }]}
+                        value={adminUsername}
+                        onChangeText={setAdminUsername}
+                        autoCapitalize="none"
+                        placeholder="Identifiant (admin)"
+                    />
+                    <TextInput
+                        style={[styles.input, { width: "100%" }]}
+                        value={adminPassword}
+                        onChangeText={setAdminPassword}
+                        secureTextEntry
+                        placeholder="Mot de passe"
+                        onSubmitEditing={handleAdminLogin}
+                    />
+                    <TouchableOpacity
+                        style={[styles.btnPrimary, { width: "100%" }]}
+                        onPress={handleAdminLogin}
+                        disabled={adminLoading}
+                    >
+                        <Text style={styles.btnPrimaryText}>
+                            {adminLoading ? "Connexion..." : "Se connecter en Admin"}
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.btnSecondary, { width: "100%", marginTop: 10, alignItems: "center" }]}
+                        onPress={() => setAdminView("none")}
+                    >
+                        <Text style={styles.btnSecondaryText}>← Retour à la connexion biométrique</Text>
+                    </TouchableOpacity>
+                </View>
+            </ScrollView>
+        );
+    }
+
+    if (adminView === "panel") {
+        return (
+            <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+                {toast && (
+                    <View style={[styles.toast, toast.type === "success" ? styles.toastSuccess : styles.toastError]}>
+                        <Text style={[styles.toastText, { color: toast.type === "success" ? COLORS.success : COLORS.danger }]}>
+                            {toast.text}
+                        </Text>
+                    </View>
+                )}
+
+                <View style={styles.header}>
+                    <View>
+                        <Text style={styles.greeting}>Drink Manager • Administration</Text>
+                        <Text style={styles.headerName}>⚙️ Mode Admin</Text>
+                    </View>
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity style={styles.profileIconBtn} onPress={loadAdminUsers}>
+                            <Text style={{ fontSize: 16 }}>↻</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.profileIconBtn} onPress={handleAdminLogout}>
+                            <Text style={{ fontSize: 16 }}>🚪</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* Formulaire de création d'utilisateur */}
+                <View style={[styles.card, styles.editCard]}>
+                    <Text style={styles.cardTitle}>➕ Créer un nouvel utilisateur</Text>
+                    <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4, marginBottom: 12 }}>
+                        Associez directement un ID d'empreinte (1..127) correspondant à celui enregistré sur l'Arduino.
+                    </Text>
+
+                    <Text style={styles.inputLabel}>Nom complet</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={newUserName}
+                        onChangeText={setNewUserName}
+                        placeholder="Ex: Antoine"
+                    />
+
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.inputLabel}>Solde initial (€)</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={newUserBalance}
+                                onChangeText={setNewUserBalance}
+                                keyboardType="numeric"
+                                placeholder="0"
+                            />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.inputLabel}>ID Empreinte (1..127)</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={newUserFingerprint}
+                                onChangeText={(t) => setNewUserFingerprint(t.replace(/\D/g, ""))}
+                                keyboardType="numeric"
+                                placeholder="Ex: 31"
+                            />
+                        </View>
+                    </View>
+
+                    <TouchableOpacity
+                        style={[styles.btnPrimary, { width: "100%", marginTop: 4 }]}
+                        onPress={handleAdminCreateUser}
+                        disabled={adminLoading}
+                    >
+                        <Text style={styles.btnPrimaryText}>
+                            {adminLoading ? "Création..." : "Créer l'utilisateur"}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Liste des utilisateurs & empreintes */}
+                <View style={styles.card}>
+                    <Text style={[styles.cardTitle, { marginBottom: 12 }]}>
+                        👥 Utilisateurs enregistrés ({adminUsers.length})
+                    </Text>
+                    {adminUsers.map((u) => {
+                        const isEditing = editingFpUserId === u.id;
+                        return (
+                            <View
+                                key={u.id}
+                                style={{
+                                    paddingVertical: 10,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: COLORS.border,
+                                }}
+                            >
+                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ fontWeight: "700", color: COLORS.textDark }}>
+                                            #{u.id} • {u.name}
+                                        </Text>
+                                        <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+                                            Solde : {u.balance.toFixed(2)} € •{" "}
+                                            {u.access_print && u.access_print > 0
+                                                ? `Empreinte #${u.access_print}`
+                                                : "Aucune empreinte"}
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        style={styles.btnSecondary}
+                                        onPress={() => {
+                                            if (isEditing) {
+                                                setEditingFpUserId(null);
+                                            } else {
+                                                setEditingFpUserId(u.id);
+                                                setEditingFpValue(u.access_print ? String(u.access_print) : "");
+                                            }
+                                        }}
+                                    >
+                                        <Text style={styles.btnSecondaryText}>
+                                            {isEditing ? "Fermer" : "🔑 Empreinte"}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                                {isEditing && (
+                                    <View style={[styles.createUserRow, { marginTop: 8 }]}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                                            value={editingFpValue}
+                                            onChangeText={(t) => setEditingFpValue(t.replace(/\D/g, ""))}
+                                            keyboardType="numeric"
+                                            placeholder="ID empreinte (0 = aucune, 1..127)"
+                                        />
+                                        <TouchableOpacity
+                                            style={styles.btnPrimary}
+                                            onPress={() => handleAdminSaveFingerprint(u.id)}
+                                        >
+                                            <Text style={styles.btnPrimaryText}>Enregistrer</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+                            </View>
+                        );
+                    })}
+                </View>
+
+                <TouchableOpacity
+                    style={[styles.btnSecondary, { width: "100%", alignItems: "center", marginBottom: 24 }]}
+                    onPress={handleAdminLogout}
+                >
+                    <Text style={styles.btnSecondaryText}>← Quitter le mode Admin</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        );
+    }
+
     // ---------- Écran de connexion obligatoire ----------
     if (userId === 0) {
         return (
@@ -298,6 +629,12 @@ export default function App() {
                     <Text style={{ marginTop: 14, fontSize: 12, color: COLORS.textMuted, textAlign: "center" }}>
                         Le code est valable 2 minutes et ne sert qu'une seule fois.
                     </Text>
+                    <TouchableOpacity
+                        style={[styles.btnSecondary, { width: "100%", marginTop: 14, alignItems: "center" }]}
+                        onPress={handleOpenAdmin}
+                    >
+                        <Text style={styles.btnSecondaryText}>⚙️ Mode Admin (créer un utilisateur)</Text>
+                    </TouchableOpacity>
                 </View>
 
                 {__DEV__ && (

@@ -186,6 +186,11 @@ int main() {
     const bool allowSim = simEnv && std::string(simEnv) == "1";
     if (allowSim) std::cout << "[WARN] Simulateur de capteur autorise (DM_ALLOW_SIM=1)\n";
 
+    const char* adminUserEnv = std::getenv("DM_ADMIN_USER");
+    const char* adminPassEnv = std::getenv("DM_ADMIN_PASS");
+    const std::string adminUser = (adminUserEnv && *adminUserEnv) ? adminUserEnv : "admin";
+    const std::string adminPass = (adminPassEnv && *adminPassEnv) ? adminPassEnv : "admin";
+
     sqlite3* db = nullptr;
     std::string dbPath = resolveDbPath();
 
@@ -202,18 +207,33 @@ int main() {
     std::mutex dbMutex;
     std::mutex authMutex;
     std::unordered_map<std::string, Session> sessions;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> adminSessions;
 
-    // Retourne l'id utilisateur du jeton "Authorization: Bearer <token>", ou -1
-    auto authUserId = [&](const httplib::Request& req) -> int {
+    auto extractBearer = [](const httplib::Request& req) -> std::string {
         std::string h = req.get_header_value("Authorization");
         const std::string prefix = "Bearer ";
         if (h.rfind(prefix, 0) == 0) h = h.substr(prefix.size());
+        return h;
+    };
+
+    // Retourne l'id utilisateur du jeton "Authorization: Bearer <token>", ou -1
+    auto authUserId = [&](const httplib::Request& req) -> int {
+        std::string h = extractBearer(req);
         if (h.empty()) return -1;
         std::lock_guard<std::mutex> lk(authMutex);
         auto it = sessions.find(h);
         if (it == sessions.end()) return -1;
         if (it->second.expiresAt < std::chrono::steady_clock::now()) { sessions.erase(it); return -1; }
         return it->second.userId;
+    };
+    auto isAdminRequest = [&](const httplib::Request& req) -> bool {
+        std::string h = extractBearer(req);
+        if (h.empty()) return false;
+        std::lock_guard<std::mutex> lk(authMutex);
+        auto it = adminSessions.find(h);
+        if (it == adminSessions.end()) return false;
+        if (it->second < std::chrono::steady_clock::now()) { adminSessions.erase(it); return false; }
+        return true;
     };
     // true si authentifie ; si expectedId >= 0 le jeton doit appartenir a ce compte
     auto requireAuth = [&](const httplib::Request& req, httplib::Response& res, int expectedId) -> bool {
@@ -224,6 +244,13 @@ int main() {
     };
     auto requireLocal = [&](const httplib::Request& req, httplib::Response& res) -> bool {
         if (!isLocalRequest(req)) { sendError(res, 403, "Reserve a la borne (acces local)"); return false; }
+        return true;
+    };
+    auto requireAdminOrLocal = [&](const httplib::Request& req, httplib::Response& res) -> bool {
+        if (!isAdminRequest(req) && !isLocalRequest(req)) {
+            sendError(res, 403, "Acces reserve au mode administrateur");
+            return false;
+        }
         return true;
     };
 
@@ -247,9 +274,33 @@ int main() {
         res.set_content(json.str(), "application/json");
     });
 
+    // 0b. POST /api/admin/login (Connexion Mode Admin)
+    svr.Post("/api/admin/login", [&](const httplib::Request& req, httplib::Response& res) {
+        std::string user, pass;
+        if (!getString(req.body, "username", user) || !getString(req.body, "password", pass)) {
+            sendError(res, 400, "Identifiant et mot de passe requis");
+            return;
+        }
+        if (user != adminUser || pass != adminPass) {
+            sendError(res, 401, "Identifiants administrateur incorrects");
+            return;
+        }
+        std::string token = generateToken();
+        {
+            std::lock_guard<std::mutex> lk(authMutex);
+            auto now = std::chrono::steady_clock::now();
+            for (auto it = adminSessions.begin(); it != adminSessions.end(); ) {
+                if (it->second < now) it = adminSessions.erase(it);
+                else ++it;
+            }
+            adminSessions[token] = now + std::chrono::hours(8);
+        }
+        res.set_content("{\"status\":\"ok\",\"role\":\"admin\",\"token\":\"" + token + "\"}", "application/json");
+    });
+
     // 1. GET /api/users
     svr.Get("/api/users", [&](const httplib::Request& req, httplib::Response& res) {
-        if (!requireLocal(req, res)) return;
+        if (!requireAdminOrLocal(req, res)) return;
         std::lock_guard<std::mutex> lock(dbMutex);
         auto users = repo.getAllUsers();
         std::ostringstream json;
@@ -263,7 +314,7 @@ int main() {
 
     // 2. POST /api/users
     svr.Post("/api/users", [&](const httplib::Request& req, httplib::Response& res) {
-        if (!requireLocal(req, res)) return;
+        if (!requireAdminOrLocal(req, res)) return;
         std::string name;
         if (!getString(req.body, "name", name) || name.empty()) {
             sendError(res, 400, "Nom manquant");
@@ -275,9 +326,19 @@ int main() {
 
         int accessPrint = 0;
         getInt(req.body, "access_print", accessPrint);
-        if (accessPrint < 0 || accessPrint > Protocole::ID_MAX) accessPrint = 0;
+        if (accessPrint < 0 || accessPrint > Protocole::ID_MAX) {
+            sendError(res, 400, "access_print invalide (0..127)");
+            return;
+        }
 
         std::lock_guard<std::mutex> lock(dbMutex);
+        if (accessPrint > 0) {
+            auto existing = repo.getUserByAccessPrint(accessPrint);
+            if (existing) {
+                sendError(res, 409, "L'empreinte #" + std::to_string(accessPrint) + " est deja associee a " + existing->name);
+                return;
+            }
+        }
         auto created = repo.createUser(name, initialBalance, accessPrint);
         if (!created) {
             sendError(res, 500, "Impossible de creer l'utilisateur");
@@ -319,7 +380,7 @@ int main() {
 
     // 4b. PUT /api/users/:id/fingerprint
     svr.Put(R"(/api/users/(\d+)/fingerprint)", [&](const httplib::Request& req, httplib::Response& res) {
-        if (!requireLocal(req, res)) return;
+        if (!requireAdminOrLocal(req, res)) return;
         int userId;
         try { userId = std::stoi(req.matches[1]); } catch (...) { sendError(res, 400, "Id invalide"); return; }
 
@@ -330,6 +391,13 @@ int main() {
         }
 
         std::lock_guard<std::mutex> lock(dbMutex);
+        if (accessPrint > 0) {
+            auto existing = repo.getUserByAccessPrint(accessPrint);
+            if (existing && existing->id != userId) {
+                sendError(res, 409, "L'empreinte #" + std::to_string(accessPrint) + " est deja associee a " + existing->name);
+                return;
+            }
+        }
         if (!repo.updateUserAccessPrint(userId, accessPrint)) {
             sendError(res, 404, "Utilisateur introuvable");
             return;

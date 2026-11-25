@@ -2,15 +2,15 @@
 
 bool Portefeuille::peutDebiter(int soldeCentimes, int prixCentimes)
 {
-    return prixCentimes > 0 && prixCentimes <= soldeCentimes;
+    return soldeCentimes >= 0 && prixCentimes > 0 && prixCentimes <= soldeCentimes;
 }
 
 bool Portefeuille::peutRecharger(int soldeCentimes, int montantCentimes)
 {
-   if (montantCentimes > 0 && montantCentimes <= RECHARGE_MAX && (soldeCentimes + montantCentimes) <= SOLDE_MAX) {
-       return true;
-   }
-   return false;
+    return soldeCentimes >= 0
+        && montantCentimes > 0
+        && montantCentimes <= RECHARGE_MAX
+        && soldeCentimes <= (SOLDE_MAX - montantCentimes);
 }
 
 int Portefeuille::apresDebit(int soldeCentimes, int prixCentimes)

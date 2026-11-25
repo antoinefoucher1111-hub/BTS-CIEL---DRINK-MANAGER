@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # SQLite embarquee (identique sur Windows et Raspberry Pi / Linux)
 include_directories(include src sqlite)
-file(GLOB_RECURSE SRC_FILES "src/*.cpp")
+file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS "src/*.cpp")
 add_executable(drink_manager ${SRC_FILES} sqlite/sqlite3.c)
 
 if(WIN32)
@@ -16,3 +16,15 @@ else()
     find_package(Threads REQUIRED)
     target_link_libraries(drink_manager Threads::Threads ${CMAKE_DL_LIBS})
 endif()
+
+enable_testing()
+add_executable(test_securite
+    tests/securite/main.cpp
+    src/auth/securite/authentificateur.cpp
+    src/auth/securite/basememoire.cpp
+    src/auth/securite/jeton.cpp
+    src/auth/securite/portefeuille.cpp
+    src/auth/securite/securite.cpp
+)
+target_include_directories(test_securite PRIVATE src/auth/securite)
+add_test(NAME SecuriteTests COMMAND test_securite)

@@ -1,4 +1,5 @@
 #pragma once
+#include <optional>
 #include <string>
 #include <ctime>
 #include "ibase.h"
@@ -18,7 +19,8 @@ public:
 
     bool surUtilisateurIdentifie(int fingerprintId, std::time_t maintenant);
 
-    ResultatVerif verifier(int idUser, const std::string& codeSaisi, std::time_t maintenant);
+    ResultatVerif      verifier(int idUser, const std::string& codeSaisi, std::time_t maintenant);
+    std::optional<int> verifierParCode(const std::string& codeSaisi, std::time_t maintenant);
 
 private:
     IBase&      m_base;

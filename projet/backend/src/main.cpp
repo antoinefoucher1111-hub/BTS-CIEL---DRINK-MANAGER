@@ -1,13 +1,19 @@
 #include "httplib.h"
 #include "repositories/UserRepository.hpp"
 #include "materiel/protocole.h"
+#include "auth/securite/authentificateur.h"
+#include "auth/securite/portefeuille.h"
 #include <sqlite3.h>
 #include <iostream>
 #include <mutex>
 #include <sstream>
 #include <string>
 #include <cctype>
+#include <cmath>
+#include <ctime>
 #include <filesystem>
+#include <limits>
+#include <map>
 #include <unordered_map>
 #include <chrono>
 #include <random>
@@ -79,27 +85,82 @@ static std::string resolveDbPath() {
     const std::string candidates[] = {
         "data/drinkmanager.db",
         "backend/data/drinkmanager.db",
+        "projet/backend/data/drinkmanager.db",
         "../data/drinkmanager.db",
         "C:/Users/antoi/Documents/Ui_Interface_web/backend/data/drinkmanager.db"
     };
     for (const auto& p : candidates) {
         if (std::filesystem::exists(p)) return p;
     }
-    return "C:/Users/antoi/Documents/Ui_Interface_web/backend/data/drinkmanager.db";
+    return "data/drinkmanager.db";
 }
 
-struct PendingAuthCode {
-    int userId;
-    std::chrono::steady_clock::time_point expiresAt;
+static bool eurosToCentimes(double euros, int& out) {
+    if (!std::isfinite(euros)) return false;
+    double scaled = std::round(euros * 100.0);
+    if (scaled < static_cast<double>(std::numeric_limits<int>::min()) ||
+        scaled > static_cast<double>(std::numeric_limits<int>::max())) {
+        return false;
+    }
+    out = static_cast<int>(scaled);
+    return true;
+}
+
+// Adaptateur IBase : relie le module auth/securite au UserRepository (SQLite)
+class BaseRepository : public IBase {
+public:
+    explicit BaseRepository(UserRepository& repo) : m_repo(repo) {}
+
+    std::optional<int> trouverUtilisateurParEmpreinte(int fingerprintId) override {
+        auto user = m_repo.getUserByAccessPrint(fingerprintId);
+        if (!user) return std::nullopt;
+        return user->id;
+    }
+
+    void enregistrerJeton(const Jeton& j) override {
+        const std::time_t now = std::time(nullptr);
+        for (auto it = m_jetons.begin(); it != m_jetons.end(); ) {
+            if (!GestionJeton::estValide(it->second, now)) it = m_jetons.erase(it);
+            else ++it;
+        }
+        m_jetons[j.idUser] = j;
+    }
+
+    std::optional<Jeton> chargerJeton(int idUser) override {
+        auto it = m_jetons.find(idUser);
+        if (it == m_jetons.end()) return std::nullopt;
+        return it->second;
+    }
+
+    std::optional<Jeton> chargerJetonParHash(const std::string& codeHash) override {
+        std::optional<Jeton> fallback;
+        for (const auto& [idUser, jeton] : m_jetons) {
+            if (jeton.codeHash == codeHash) {
+                if (!jeton.used) return jeton;
+                fallback = jeton;
+            }
+        }
+        return fallback;
+    }
+
+    void mettreAJourJeton(const Jeton& j) override {
+        m_jetons[j.idUser] = j;
+    }
+
+private:
+    UserRepository& m_repo;
+    std::map<int, Jeton> m_jetons;
 };
 
-static std::string generate6DigitCode() {
-    static thread_local std::mt19937 rng(std::random_device{}());
-    std::uniform_int_distribution<int> dist(0, 999999);
-    std::ostringstream oss;
-    oss << std::setw(6) << std::setfill('0') << dist(rng);
-    return oss.str();
-}
+// Adaptateur IAfficheur : capture le code genere pour le renvoyer a l'API / pont serie Arduino
+class AfficheurTampon : public IAfficheur {
+public:
+    void afficher(const std::string& texte) override { m_dernierCode = texte; }
+    const std::string& dernierCode() const { return m_dernierCode; }
+
+private:
+    std::string m_dernierCode;
+};
 
 struct Session {
     int userId;
@@ -135,9 +196,11 @@ int main() {
     std::cout << "[INFO] Base " << dbPath << " ouverte avec succes.\n";
 
     UserRepository repo(db);
+    BaseRepository authBase(repo);
+    AfficheurTampon authAfficheur;
+    Authentificateur authentificateur(authBase, authAfficheur);
     std::mutex dbMutex;
     std::mutex authMutex;
-    std::unordered_map<std::string, PendingAuthCode> activeCodes;
     std::unordered_map<std::string, Session> sessions;
 
     // Retourne l'id utilisateur du jeton "Authorization: Bearer <token>", ou -1
@@ -299,22 +362,16 @@ int main() {
             return;
         }
 
-        std::lock_guard<std::mutex> lock(dbMutex);
+        std::scoped_lock lock(dbMutex, authMutex);
+        if (!authentificateur.surUtilisateurIdentifie(fingerprintId, std::time(nullptr))) {
+            sendError(res, 404, "Aucun utilisateur associe a cette empreinte");
+            return;
+        }
+        const std::string code = authAfficheur.dernierCode();
         auto user = repo.getUserByAccessPrint(fingerprintId);
         if (!user) {
             sendError(res, 404, "Aucun utilisateur associe a cette empreinte");
             return;
-        }
-
-        std::string code = generate6DigitCode();
-        {
-            std::lock_guard<std::mutex> aLock(authMutex);
-            auto now = std::chrono::steady_clock::now();
-            for (auto it = activeCodes.begin(); it != activeCodes.end(); ) {
-                if (it->second.expiresAt < now) it = activeCodes.erase(it);
-                else ++it;
-            }
-            activeCodes[code] = PendingAuthCode{user->id, now + std::chrono::seconds(120)};
         }
 
         std::ostringstream json;
@@ -332,25 +389,33 @@ int main() {
             return;
         }
 
+        int requestedUserId = 0;
+        const bool hasUserId = getInt(req.body, "user_id", requestedUserId);
+
+        std::scoped_lock lock(dbMutex, authMutex);
+        const std::time_t nowSec = std::time(nullptr);
         int matchedUserId = -1;
-        {
-            std::lock_guard<std::mutex> aLock(authMutex);
-            auto now = std::chrono::steady_clock::now();
-            auto it = activeCodes.find(code);
-            if (it != activeCodes.end()) {
-                if (it->second.expiresAt >= now) {
-                    matchedUserId = it->second.userId;
-                }
-                activeCodes.erase(it);
+
+        if (hasUserId) {
+            ResultatVerif r = authentificateur.verifier(requestedUserId, code, nowSec);
+            if (r == ResultatVerif::CODE_FAUX) {
+                sendError(res, 401, "Code incorrect");
+                return;
             }
+            if (r != ResultatVerif::OK) {
+                sendError(res, 401, "Code expire ou bloque");
+                return;
+            }
+            matchedUserId = requestedUserId;
+        } else {
+            auto matched = authentificateur.verifierParCode(code, nowSec);
+            if (!matched) {
+                sendError(res, 401, "Code inconnu ou expire");
+                return;
+            }
+            matchedUserId = *matched;
         }
 
-        if (matchedUserId < 0) {
-            sendError(res, 401, "Code inconnu ou expire");
-            return;
-        }
-
-        std::lock_guard<std::mutex> lock(dbMutex);
         auto user = repo.getUserById(matchedUserId);
         if (!user) {
             sendError(res, 404, "Utilisateur introuvable");
@@ -359,7 +424,6 @@ int main() {
 
         std::string token = generateToken();
         {
-            std::lock_guard<std::mutex> aLock(authMutex);
             auto now = std::chrono::steady_clock::now();
             for (auto it = sessions.begin(); it != sessions.end(); ) {
                 if (it->second.expiresAt < now) it = sessions.erase(it);
@@ -469,12 +533,31 @@ int main() {
             return;
         }
         if (!requireAuth(req, res, userId)) return;
-        if (amount <= 0) { sendError(res, 400, "Montant invalide"); return; }
+
+        int montantCentimes = 0;
+        if (!eurosToCentimes(amount, montantCentimes) || montantCentimes <= 0) {
+            sendError(res, 400, "Montant invalide");
+            return;
+        }
+        if (montantCentimes > Portefeuille::RECHARGE_MAX) {
+            sendError(res, 400, "Montant de recharge trop eleve (max 100.00 EUR)");
+            return;
+        }
 
         std::lock_guard<std::mutex> lock(dbMutex);
-        if (!repo.getUserById(userId)) { sendError(res, 404, "Utilisateur introuvable"); return; }
+        auto current = repo.getUserById(userId);
+        if (!current) { sendError(res, 404, "Utilisateur introuvable"); return; }
 
-        if (!repo.updateBalance(userId, amount)) {
+        int soldeCentimes = 0;
+        if (!eurosToCentimes(current->balance, soldeCentimes) ||
+            !Portefeuille::peutRecharger(soldeCentimes, montantCentimes)) {
+            sendError(res, 400, "Solde maximum atteint (max 500.00 EUR)");
+            return;
+        }
+
+        const double montantValide =
+            (Portefeuille::apresRecharge(soldeCentimes, montantCentimes) - soldeCentimes) / 100.0;
+        if (!repo.updateBalance(userId, montantValide)) {
             sendError(res, 500, "Echec du rechargement");
             return;
         }

@@ -12,6 +12,7 @@ public:
     // enregistre le jeton (remplace l'ancien du meme utilisateur)
     virtual void                 enregistrerJeton(const Jeton& j) = 0;
     virtual std::optional<Jeton> chargerJeton(int idUser) = 0;
+    virtual std::optional<Jeton> chargerJetonParHash(const std::string& codeHash) = 0;
     // sauvegarde used et tentatives
     virtual void                 mettreAJourJeton(const Jeton& j) = 0;
 };

@@ -16,7 +16,7 @@ enum class ResultatVerif { OK, CODE_FAUX, EXPIRE_OU_BLOQUE };
 class GestionJeton
 {
 public:
-    static constexpr int DUREE_SECONDES = 60;
+    static constexpr int DUREE_SECONDES = 120;
     static constexpr int MAX_TENTATIVES = 3;
 
     static Jeton creer(int idUser, const std::string& code, std::time_t maintenant);

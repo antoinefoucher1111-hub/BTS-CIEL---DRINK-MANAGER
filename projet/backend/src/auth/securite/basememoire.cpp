@@ -30,6 +30,23 @@ std::optional<Jeton> BaseMemoire::chargerJeton(int idUser)
     return it->second;
 }
 
+std::optional<Jeton> BaseMemoire::chargerJetonParHash(const std::string& codeHash)
+{
+    std::optional<Jeton> fallback;
+    for (const auto& [idUser, jeton] : m_jetons)
+    {
+        if (jeton.codeHash == codeHash)
+        {
+            if (!jeton.used)
+            {
+                return jeton;
+            }
+            fallback = jeton;
+        }
+    }
+    return fallback;
+}
+
 void BaseMemoire::mettreAJourJeton(const Jeton& j)
 {
     m_jetons[j.idUser] = j;

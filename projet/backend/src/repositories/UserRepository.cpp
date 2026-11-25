@@ -1,6 +1,20 @@
 #include "UserRepository.hpp"
+#include "../auth/securite/portefeuille.h"
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <sstream>
+
+static bool eurosToCentimes(double euros, int& out) {
+    if (!std::isfinite(euros)) return false;
+    double scaled = std::round(euros * 100.0);
+    if (scaled < static_cast<double>(std::numeric_limits<int>::min()) ||
+        scaled > static_cast<double>(std::numeric_limits<int>::max())) {
+        return false;
+    }
+    out = static_cast<int>(scaled);
+    return true;
+}
 
 static std::string colText(sqlite3_stmt* stmt, int col) {
     const unsigned char* txt = sqlite3_column_text(stmt, col);
@@ -215,11 +229,21 @@ bool UserRepository::processOrder(int userId, int drinkId, int quantity, std::st
         return false;
     }
 
-    double totalPrice = drink->price * quantity;
-    if (user->balance < totalPrice) {
+    int soldeCentimes = 0;
+    int prixTotalCentimes = 0;
+    if (!eurosToCentimes(user->balance, soldeCentimes) ||
+        !eurosToCentimes(drink->price * quantity, prixTotalCentimes) ||
+        prixTotalCentimes <= 0) {
+        errorMsg = "Montant invalide";
+        return false;
+    }
+
+    if (!Portefeuille::peutDebiter(soldeCentimes, prixTotalCentimes)) {
         errorMsg = "Solde insuffisant";
         return false;
     }
+
+    double expectedBalance = Portefeuille::apresDebit(soldeCentimes, prixTotalCentimes) / 100.0;
 
     if (sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr) != SQLITE_OK) {
         errorMsg = "Erreur base de donnees";
@@ -243,13 +267,13 @@ bool UserRepository::processOrder(int userId, int drinkId, int quantity, std::st
         return false;
     }
 
-    const char* debitSql = "UPDATE Wallet SET Solde = Solde - ? WHERE idUser = ?;";
+    const char* debitSql = "UPDATE Wallet SET Solde = ? WHERE idUser = ?;";
     if (sqlite3_prepare_v2(db, debitSql, -1, &stmt, nullptr) != SQLITE_OK) {
         sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
         errorMsg = "Erreur interne";
         return false;
     }
-    sqlite3_bind_double(stmt, 1, totalPrice);
+    sqlite3_bind_double(stmt, 1, expectedBalance);
     sqlite3_bind_int(stmt, 2, userId);
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -300,7 +324,7 @@ bool UserRepository::processOrder(int userId, int drinkId, int quantity, std::st
 
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     auto updated = getUserById(userId);
-    newBalance = updated ? updated->balance : (user->balance - totalPrice);
+    newBalance = updated ? updated->balance : expectedBalance;
     return true;
 }
 

@@ -188,8 +188,9 @@ export default function App() {
             setUser((prev) => (prev ? { ...prev, balance: res.new_balance } : null));
             setCustomTopUp("");
             showToast("success", `Compte crédité de +${amount.toFixed(2)} €`);
-        } catch {
-            showToast("error", "Impossible de créditer le compte.");
+        } catch (err: any) {
+            const msg = err?.response?.data?.error || "Impossible de créditer le compte.";
+            showToast("error", msg);
         }
     };
 

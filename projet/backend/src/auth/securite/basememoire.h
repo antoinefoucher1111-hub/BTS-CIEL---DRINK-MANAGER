@@ -10,6 +10,7 @@ public:
     std::optional<int>   trouverUtilisateurParEmpreinte(int fingerprintId) override;
     void                 enregistrerJeton(const Jeton& j) override;
     std::optional<Jeton> chargerJeton(int idUser) override;
+    std::optional<Jeton> chargerJetonParHash(const std::string& codeHash) override;
     void                 mettreAJourJeton(const Jeton& j) override;
 
 private:

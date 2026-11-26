@@ -245,7 +245,6 @@ erDiagram
 ```text
 projet/
 ├── README.md                                  # Documentation principale & protocole d'installation
-├── COMPTE_RENDU_PROJET.md                     # Compte rendu complet BTS CIEL + partie ressenti
 ├── TUTO_RASPBERRY_PI.md                       # Guide pas-à-pas Raspberry Pi 5
 ├── lancer_drink_manager.sh                    # Script tout-en-un (Backend + Web + Pont Série)
 │
